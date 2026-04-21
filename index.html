@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PPC Pilot 5.1 | 自动化广告诊断与决策系统</title>
+    <!-- 引入 SheetJS 用于解析 Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        /* ================== 基础变量与样式 ================== */
+        :root {
+            --primary: #1e293b;
+            --primary-light: #334155;
+            --accent: #4f46e5;
+            --accent-hover: #4338ca;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --info: #3b82f6;
+            --diamond: #8b5cf6; /* 紫色钻石 */
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --border: #e2e8f0;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: var(--bg); color: var(--text-main); line-height: 1.6; padding: 20px; }
+        
+        /* ================== 布局组件 ================== */
+        header { background: var(--primary); color: white; padding: 20px 24px; border-radius: 12px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .header-left h1 { font-size: 1.5rem; margin-bottom: 4px; }
+        .header-left p { font-size: 0.85rem; color: #cbd5e1; }
+        .header-right { display: flex; gap: 12px; align-items: center; }
+        
+        .card { background: var(--card-bg); padding: 24px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .card-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+
+        /* ================== 表单与按钮 ================== */
+        .btn { padding: 8px 16px; border-radius: 8px; font-size: 0.9rem; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+        .btn-primary { background: var(--accent); color: white; }
+        .btn-primary:hover { background: var(--accent-hover); }
+        .btn-success { background: var(--success); color: white; }
+        .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-main); }
+        .btn-outline:hover { background: #f1f5f9; }
+        .btn-sm { padding: 4px 10px; font-size: 0.8rem; border-radius: 6px; }
+
+        input[type="text"], input[type="number"] { padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.9rem; outline: none; transition: border-color 0.2s; }
+        input[type="text"]:focus, input[type="number"]:focus { border-color: var(--accent); }
+
+        /* ================== 上传区 ================== */
+        .upload-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 16px; }
+        .upload-box { border: 2px dashed #cbd5e1; border-radius: 12px; padding: 24px; text-align: center; cursor: pointer; transition: all 0.2s; background: #fff; }
+        .upload-box:hover { border-color: var(--accent); background: #f5f3ff; }
+        .upload-box.active { border-color: var(--success); background: #f0fdf4; border-style: solid; }
+        .upload-hint { font-size: 0.75rem; color: var(--text-muted); margin-top: 8px; background: #f1f5f9; padding: 6px; border-radius: 4px; }
+        .upload-status { margin-top: 10px; font-size: 0.85rem; font-weight: 600; color: var(--accent); }
+
+        /* ================== 基准设置区 ================== */
+        .benchmark-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+        .benchmark-table th, .benchmark-table td { padding: 10px; text-align: left; border-bottom: 1px solid var(--border); }
+        .benchmark-table th { font-size: 0.85rem; color: var(--text-muted); font-weight: 600; }
+
+        /* ================== 组合与活动树形结构 ================== */
+        .search-bar { width: 100%; padding: 12px 16px; border-radius: 8px; border: 2px solid var(--border); font-size: 1rem; margin-bottom: 20px; }
+        .global-metrics { display: flex; gap: 20px; margin-bottom: 20px; padding: 16px; background: #e0e7ff; border-radius: 10px; border: 1px solid #c7d2fe; }
+        .gm-item { flex: 1; }
+        .gm-label { font-size: 0.8rem; color: #4338ca; font-weight: 600; }
+        .gm-value { font-size: 1.5rem; font-weight: 800; color: #312e81; }
+
+        .portfolio-item { margin-bottom: 16px; border: 1px solid var(--border); border-radius: 12px; background: #fff; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+        .pf-header { padding: 16px 20px; background: #f8fafc; display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; border-bottom: 1px solid transparent; transition: background 0.2s; }
+        .pf-header:hover { background: #f1f5f9; }
+        .pf-header.expanded { border-bottom-color: var(--border); }
+        .pf-title-area { display: flex; align-items: center; gap: 10px; }
+        .pf-chevron { transition: transform 0.3s; font-size: 0.8rem; color: var(--text-muted); }
+        .pf-header.expanded .pf-chevron { transform: rotate(90deg); }
+        .pf-stats { display: flex; gap: 16px; font-size: 0.85rem; color: var(--text-muted); }
+        .pf-stats b { color: var(--text-main); }
+
+        .campaign-list { display: none; padding: 16px; background: #fff; }
+        .portfolio-item.expanded .campaign-list { display: block; }
+        
+        .cp-card { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 16px; overflow: hidden; transition: opacity 0.3s; }
+        .cp-inactive { opacity: 0.65; background: #f8fafc; } /* 已关闭活动的样式 */
+        .cp-header { padding: 12px 16px; background: #fdfdfd; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed var(--border); }
+        .cp-inactive .cp-header { background: #f1f5f9; }
+        .cp-metrics { display: flex; gap: 16px; font-size: 0.85rem; }
+        
+        /* ================== 建议模块样式 ================== */
+        .advice-section { padding: 16px; display: flex; flex-direction: column; gap: 12px; background: #fafafa; }
+        .advice-item { display: flex; justify-content: space-between; align-items: flex-start; padding: 12px; border-radius: 8px; border-left: 4px solid; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
+        
+        .type-neg { border-color: var(--danger); }
+        .type-profit { border-color: var(--diamond); background: #f5f3ff; }
+        .type-diag-excellent { border-color: var(--success); background: #f0fdf4; }
+        .type-diag-risk { border-color: var(--danger); background: #fef2f2; }
+        .type-diag-potential { border-color: var(--warning); background: #fffbeb; }
+        .type-diag-blind { border-color: var(--text-muted); background: #f1f5f9; }
+        .type-cvr-check { border-color: var(--info); background: #eff6ff; }
+        .type-bid { border-color: var(--primary); }
+
+        .advice-content { flex: 1; }
+        .advice-title { font-weight: 700; font-size: 0.9rem; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+        .advice-desc { font-size: 0.85rem; color: var(--text-muted); }
+        .advice-action { margin-left: 16px; flex-shrink: 0; }
+
+        /* ================== 广告位与图表 ================== */
+        .pl-analysis { margin-top: 12px; padding: 12px; background: #fff; border: 1px solid var(--border); border-radius: 8px; }
+        .pl-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-bottom: 12px; }
+        .pl-table th, .pl-table td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border); }
+        .chart-container { width: 100%; height: 180px; position: relative; margin-top: 10px; border: 1px solid #f1f5f9; border-radius: 6px; padding: 10px; }
+        canvas { display: block; width: 100%; height: 100%; }
+
+        .hidden { display: none !important; }
+        .badge { padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; color: white; }
+        .badge-broad { background: var(--info); }
+        .badge-phrase { background: var(--warning); }
+        .badge-exact { background: var(--success); }
+        .badge-inactive { background: var(--danger); }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="header-left">
+        <h1>PPC Pilot 5.1</h1>
+        <p>支持已关闭活动过滤与稳健数据抓取的智能广告系统</p>
+    </div>
+    <div class="header-right">
+        <button class="btn btn-outline" style="color:white; border-color:rgba(255,255,255,0.3)" onclick="loadSampleData()">📦 加载示例数据</button>
+        <button class="btn btn-success" onclick="exportJSON()">⬇️ 导出优化清单 (JSON)</button>
+    </div>
+</header>
+
+<!-- 基准设置区 -->
+<div class="card">
+    <div class="card-title">🎯 4.3 多品类 CVR 基准线设置</div>
+    <table class="benchmark-table" id="benchmarkTable">
+        <thead>
+            <tr>
+                <th>品类关键字 (如: 茶蜡, Floating)</th>
+                <th>CVR 基准 (%)</th>
+                <th style="width: 80px;">操作</th>
+            </tr>
+        </thead>
+        <tbody id="benchmarkBody">
+            <!-- 动态渲染 -->
+        </tbody>
+    </table>
+    <button class="btn btn-outline btn-sm" onclick="addBenchmarkRow()">+ 添加品类</button>
+</div>
+
+<!-- 上传区 -->
+<div class="card">
+    <div class="card-title">📂 1. 数据源上传</div>
+    <div class="upload-grid">
+        <div class="upload-box" id="box-st" onclick="document.getElementById('file-st').click()">
+            <div style="font-size: 2rem; margin-bottom: 8px;">📄</div>
+            <h3>上传搜索词报告 (ST)</h3>
+            <div class="upload-hint">路径: 报告 → 创建报告 → 搜索词 (明细:广告活动)</div>
+            <div class="upload-status" id="status-st"></div>
+            <input type="file" id="file-st" hidden accept=".xlsx,.csv" onchange="handleFileUpload('st', event)">
+        </div>
+        <div class="upload-box" id="box-pl" onclick="document.getElementById('file-pl').click()">
+            <div style="font-size: 2rem; margin-bottom: 8px;">📍</div>
+            <h3>上传广告位报告 (PL)</h3>
+            <div class="upload-hint">路径: 报告 → 创建报告 → 广告位 (包含日期字段)</div>
+            <div class="upload-status" id="status-pl"></div>
+            <input type="file" id="file-pl" hidden accept=".xlsx,.csv" onchange="handleFileUpload('pl', event)">
+        </div>
+    </div>
+    <button class="btn btn-primary" style="width: 100%; justify-content: center; padding: 12px; font-size: 1.1rem;" onclick="processData()">
+        ⚙️ 开始关联与自动化诊断
+    </button>
+</div>
+
+<!-- 诊断结果区 -->
+<div id="dashboard" class="hidden">
+    <input type="text" id="searchInput" class="search-bar" placeholder="🔍 根据广告组合名称快速筛选，如 T14..." oninput="renderDashboard()">
+    
+    <!-- 全局指标 -->
+    <div class="global-metrics">
+        <div class="gm-item"><div class="gm-label">全局总花费</div><div class="gm-value" id="gm-spend">$0.00</div></div>
+        <div class="gm-item"><div class="gm-label">全局总销售额</div><div class="gm-value" id="gm-sales">$0.00</div></div>
+        <div class="gm-item"><div class="gm-label">全局平均 ACOS</div><div class="gm-value" id="gm-acos">0.00%</div></div>
+        <div class="gm-item"><div class="gm-label">全局平均 CVR</div><div class="gm-value" id="gm-cvr">0.00%</div></div>
+    </div>
+
+    <!-- 树形组合列表 -->
+    <div id="portfolioList"></div>
+</div>
+
+<script>
+    /* ================== 状态管理 ================== */
+    const state = {
+        rawST: [],
+        rawPL: [],
+        dataMap: {}, 
+        globalMetrics: { spend: 0, sales: 0, clicks: 0, orders: 0, acos: 0, cvr: 0 },
+        benchmarks: [],
+        exportList: [] 
+    };
+
+    const HEADERS = {
+        pf: ['广告组合名称', 'Portfolio Name', 'Portfolio name'],
+        cp: ['广告活动名称', 'Campaign Name', 'Campaign name'],
+        mt: ['匹配类型', 'Match Type', 'Match type', 'Targeting', '投放策略'],
+        term: ['客户搜索词', 'Customer Search Term', 'Search Term'],
+        sp: ['花费', 'Spend', 'Cost'],
+        sa: ['7天总销售额', '7 Day Total Sales', 'Sales', '7天销售额'],
+        cl: ['点击量', 'Clicks'],
+        or: ['7天总订单数(#)', '7 Day Total Orders (#)', 'Orders', '7天订单数'],
+        pl: ['广告位', 'Placement', 'Placement name'],
+        dt: ['日期', 'Date'],
+        state: ['广告活动状态', 'Campaign Status', 'Campaign State', 'Status', '状态'] // 新增状态列识别
+    };
+
+    /* ================== 初始化与配置 ================== */
+    function init() {
+        const stored = localStorage.getItem('ppc_benchmarks_v5');
+        if(stored) {
+            state.benchmarks = JSON.parse(stored);
+        } else {
+            state.benchmarks = [
+                { keyword: '茶蜡', cvr: 8.0 },
+                { keyword: '柱蜡', cvr: 5.5 },
+                { keyword: 'Floating', cvr: 7.2 }
+            ];
+        }
+        renderBenchmarks();
+    }
+
+    function renderBenchmarks() {
+        const tbody = document.getElementById('benchmarkBody');
+        tbody.innerHTML = state.benchmarks.map((b, index) => `
+            <tr>
+                <td><input type="text" value="${b.keyword}" onchange="updateBenchmark(${index}, 'keyword', this.value)" placeholder="关键字"></td>
+                <td><input type="number" value="${b.cvr}" step="0.1" onchange="updateBenchmark(${index}, 'cvr', this.value)"></td>
+                <td><button class="btn btn-outline btn-sm" onclick="removeBenchmark(${index})">删除</button></td>
+            </tr>
+        `).join('');
+    }
+
+    function addBenchmarkRow() {
+        state.benchmarks.push({ keyword: '', cvr: 5.0 });
+        saveBenchmarks();
+    }
+
+    function updateBenchmark(index, field, value) {
+        state.benchmarks[index][field] = field === 'cvr' ? parseFloat(value) || 0 : value;
+        saveBenchmarks();
+    }
+
+    function removeBenchmark(index) {
+        state.benchmarks.splice(index, 1);
+        saveBenchmarks();
+    }
+
+    function saveBenchmarks() {
+        localStorage.setItem('ppc_benchmarks_v5', JSON.stringify(state.benchmarks));
+        renderBenchmarks();
+    }
+
+    /* ================== 文件解析 ================== */
+    async function handleFileUpload(type, event) {
+        const file = event.target.files[0];
+        if(!file) return;
+        
+        document.getElementById(`box-${type}`).classList.add('active');
+        document.getElementById(`status-${type}`).innerText = `读取中: ${file.name}...`;
+
+        try {
+            const data = await readExcel(file);
+            if(type === 'st') state.rawST = data;
+            if(type === 'pl') state.rawPL = data;
+            document.getElementById(`status-${type}`).innerText = `✅ 成功解析 ${data.length} 行数据`;
+        } catch (error) {
+            alert(`文件解析失败: ${error.message}`);
+            document.getElementById(`status-${type}`).innerText = `❌ 解析失败`;
+            document.getElementById(`box-${type}`).classList.remove('active');
+        }
+    }
+
+    function readExcel(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = e => {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array', cellDates: true});
+                    const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], {raw: false});
+                    resolve(json);
+                } catch(err) { reject(err); }
+            };
+            reader.onerror = reject;
+            reader.readAsArrayBuffer(file);
+        });
+    }
+
+    function getVal(row, keys) {
+        for(let k of keys) {
+            if(row[k] !== undefined && row[k] !== null) return row[k];
+        }
+        return null;
+    }
+
+    // 强化数字提取：过滤掉由于带 $ 符号或千分号逗号导致的 NaN
+    function parseNum(val) {
+        if (val === undefined || val === null || val === '') return 0;
+        if (typeof val === 'number') return val;
+        // 剥离除数字、点、减号以外的所有字符 (如 $、¥、,)
+        const cleaned = String(val).replace(/[^0-9.-]+/g, '');
+        const parsed = parseFloat(cleaned);
+        return isNaN(parsed) ? 0 : parsed;
+    }
+
+    /* ================== 核心数据关联 ================== */
+    function processData() {
+        if(state.rawST.length === 0 || state.rawPL.length === 0) {
+            return alert("请确保已成功上传 ST 报告和 PL 报告！");
+        }
+
+        state.dataMap = {};
+        state.exportList = [];
+        let gSpend = 0, gSales = 0, gClicks = 0, gOrders = 0;
+
+        // 1. 处理 ST 报表
+        state.rawST.forEach(row => {
+            const pfName = getVal(row, HEADERS.pf) || "未分配组合";
+            const cpName = getVal(row, HEADERS.cp);
+            if(!cpName) return; 
+
+            if(!state.dataMap[pfName]) {
+                state.dataMap[pfName] = { name: pfName, spend:0, sales:0, clicks:0, orders:0, campaigns: {} };
+            }
+
+            const pf = state.dataMap[pfName];
+            
+            // 抓取并判定广告活动状态
+            const rawState = String(getVal(row, HEADERS.state) || "enabled").toLowerCase();
+            let isCampActive = true;
+            if (rawState.includes('pause') || rawState.includes('archive') || rawState.includes('已暂停') || rawState.includes('已归档') || rawState.includes('已结束')) {
+                isCampActive = false;
+            }
+
+            if(!pf.campaigns[cpName]) {
+                const mtRaw = String(getVal(row, HEADERS.mt) || "").toLowerCase();
+                let matchType = "未知";
+                if(mtRaw.includes('exact') || mtRaw.includes('精准')) matchType = "精准";
+                else if(mtRaw.includes('phrase') || mtRaw.includes('词组')) matchType = "词组";
+                else if(mtRaw.includes('broad') || mtRaw.includes('宽泛')) matchType = "宽泛";
+
+                pf.campaigns[cpName] = {
+                    name: cpName, portfolio: pfName, matchType: matchType,
+                    isActive: isCampActive, // 记录活动启停状态
+                    spend: 0, sales: 0, clicks: 0, orders: 0,
+                    stRows: [], plRows: [], suggestions: []
+                };
+            } else {
+                // 如果发现该活动有处于启用状态的行，则更新活动状态
+                if (isCampActive) pf.campaigns[cpName].isActive = true;
+            }
+
+            const cp = pf.campaigns[cpName];
+            const spend = parseNum(getVal(row, HEADERS.sp));
+            const sales = parseNum(getVal(row, HEADERS.sa));
+            const clicks = parseNum(getVal(row, HEADERS.cl));
+            const orders = parseNum(getVal(row, HEADERS.or));
+
+            // 累加数据
+            cp.spend += spend; cp.sales += sales; cp.clicks += clicks; cp.orders += orders;
+            pf.spend += spend; pf.sales += sales; pf.clicks += clicks; pf.orders += orders;
+            gSpend += spend; gSales += sales; gClicks += clicks; gOrders += orders;
+
+            // 保存 ST 明细用于否词分析
+            cp.stRows.push({
+                term: getVal(row, HEADERS.term),
+                spend, sales, clicks, orders
+            });
+        });
+
+        // 计算全局均值
+        state.globalMetrics = {
+            spend: gSpend, sales: gSales, clicks: gClicks, orders: gOrders,
+            acos: gSales > 0 ? gSpend / gSales : 0,
+            cvr: gClicks > 0 ? gOrders / gClicks : 0
+        };
+
+        // 2. 处理 PL 报表并挂载到 Campaign
+        state.rawPL.forEach(row => {
+            const cpName = getVal(row, HEADERS.cp);
+            const placement = getVal(row, HEADERS.pl);
+            const dateStr = getVal(row, HEADERS.dt); 
+            
+            if(!cpName || !placement) return;
+
+            for(let pf in state.dataMap) {
+                if(state.dataMap[pf].campaigns[cpName]) {
+                    state.dataMap[pf].campaigns[cpName].plRows.push({
+                        placement: placement,
+                        date: dateStr,
+                        spend: parseNum(getVal(row, HEADERS.sp)),
+                        sales: parseNum(getVal(row, HEADERS.sa)),
+                        clicks: parseNum(getVal(row, HEADERS.cl)),
+                        orders: parseNum(getVal(row, HEADERS.or))
+                    });
+                    break;
+                }
+            }
+        });
+
+        // 3. 执行智能诊断引擎
+        runDiagnosisEngine();
+
+        // 4. 渲染视图
+        document.getElementById('dashboard').classList.remove('hidden');
+        renderDashboard();
+    }
+
+    /* ================== 智能诊断引擎 ================== */
+    function runDiagnosisEngine() {
+        const gAcos = state.globalMetrics.acos;
+        const gCvr = state.globalMetrics.cvr;
+
+        Object.values(state.dataMap).forEach(pf => {
+            pf.acos = pf.sales > 0 ? pf.spend / pf.sales : 0;
+            pf.cvr = pf.clicks > 0 ? pf.orders / pf.clicks : 0;
+
+            Object.values(pf.campaigns).forEach(cp => {
+                cp.acos = cp.sales > 0 ? cp.spend / cp.sales : 0;
+                cp.cvr = cp.clicks > 0 ? cp.orders / cp.clicks : 0;
+                const estimatedCpc = cp.clicks > 0 ? cp.spend / cp.clicks : 0.5;
+
+                // 【重要拦截】：如果广告活动已被关闭或暂停，不生成优化建议
+                if (!cp.isActive) return;
+
+                // 模块 4.1: 否词建议
+                if (cp.matchType === '词组' || cp.matchType === '宽泛') {
+                    cp.stRows.forEach(st => {
+                        if (!st.term || st.term.includes('*')) return;
+                        const termAcos = st.sales > 0 ? st.spend / st.sales : 0;
+                        if ((st.clicks > 8 && st.orders === 0) || (st.orders > 0 && termAcos > 0.8)) {
+                            const reason = st.orders === 0 ? `点击 ${st.clicks} 次无订单` : `ACOS 高达 ${(termAcos*100).toFixed(0)}%`;
+                            addAdvice(cp, 'neg', `否定关键词: "${st.term}"`, reason, '添加否定关键词');
+                        }
+                    });
+                }
+
+                // 模块 4.2: 利润探测 (紫色钻石)
+                if (cp.orders > 5 && cp.acos < 0.20) {
+                    const newCpc = (estimatedCpc * 0.85).toFixed(2);
+                    addAdvice(cp, 'profit', `💎 利润探测：高转化低成本`, `当前CPC约 $${estimatedCpc.toFixed(2)}，ACOS仅 ${(cp.acos*100).toFixed(1)}%。建议下调出价至 $${newCpc} 压榨更高利润。`, '应用建议出价');
+                }
+
+                // 模块 4.3: 多品类基准线与流量质量
+                let matchedBenchmark = null;
+                for(let b of state.benchmarks) {
+                    if (b.keyword && (cp.name.includes(b.keyword) || pf.name.includes(b.keyword))) {
+                        matchedBenchmark = b; break;
+                    }
+                }
+                if (matchedBenchmark) {
+                    const dev = cp.cvr - (matchedBenchmark.cvr / 100);
+                    if (dev < -0.01) { 
+                        const isBadTraffic = mockTrafficQualityCheck(cp.name); 
+                        if(isBadTraffic) {
+                            addAdvice(cp, 'cvr-check', `流量质量警告：偏离 ${matchedBenchmark.keyword} 基准`, `转化率低于基准 ${(Math.abs(dev)*100).toFixed(1)}%。【词不准】：前排搜索词相关性低，建议添加否定词或收缩匹配方式。`, '去优化词库');
+                        } else {
+                            addAdvice(cp, 'cvr-check', `广告位警告：偏离 ${matchedBenchmark.keyword} 基准`, `转化率低于基准 ${(Math.abs(dev)*100).toFixed(1)}%。【位不对】：词虽然准但转化差，建议调整 Top 位出价比例。`, '调整位置出价');
+                        }
+                    }
+                }
+
+                // 模块 4.4: 四维度自动化诊断
+                if (cp.cvr > gCvr && cp.acos < gAcos) {
+                    const newCpc = (estimatedCpc * 0.9).toFixed(2);
+                    addAdvice(cp, 'diag-excellent', `🌟 诊断：优秀 (CPC下探)`, `转化与成本均优于全局平均。建议出价下调至 $${newCpc}，同时可释放预算获取优质流量。`, '应用下探');
+                } else if (cp.acos > gAcos) {
+                    if (cp.cvr > gCvr) {
+                        addAdvice(cp, 'diag-potential', `⚡ 诊断：潜力`, `转化好但成本超标。建议直接降低 CPC 10%~15% 控制 ACOS。`, '降低CPC');
+                    } else {
+                        addAdvice(cp, 'diag-risk', `🚩 诊断：高 ACOS 风险`, `成本高且转化平平。建议收缩预算或暂停低效关键词。`, '收缩预算');
+                    }
+                } else if (cp.clicks > 20 && cp.orders === 0) {
+                    addAdvice(cp, 'diag-blind', `👁️ 诊断：盲点`, `大量空耗点击。建议立即暂停该广告活动并排查 Listing。`, '暂停活动');
+                }
+
+                // 模块 4.5: 广告位分析与 BID 建议
+                const plAgg = {};
+                cp.plRows.forEach(r => {
+                    if(!plAgg[r.placement]) plAgg[r.placement] = { clicks:0, orders:0, spend:0, sales:0, dates:{} };
+                    plAgg[r.placement].clicks += r.clicks;
+                    plAgg[r.placement].orders += r.orders;
+                    plAgg[r.placement].spend += r.spend;
+                    plAgg[r.placement].sales += r.sales;
+                    
+                    if(!plAgg[r.placement].dates[r.date]) plAgg[r.placement].dates[r.date] = {clicks:0, orders:0, spend:0, sales:0};
+                    plAgg[r.placement].dates[r.date].clicks += r.clicks;
+                    plAgg[r.placement].dates[r.date].orders += r.orders;
+                    plAgg[r.placement].dates[r.date].spend += r.spend;
+                    plAgg[r.placement].dates[r.date].sales += r.sales;
+                });
+                cp.plAgg = plAgg; 
+
+                Object.keys(plAgg).forEach(loc => {
+                    const locStats = plAgg[loc];
+                    if (locStats.clicks < 10) return; 
+                    const locCvr = locStats.orders / locStats.clicks;
+                    const locAcos = locStats.sales > 0 ? locStats.spend / locStats.sales : 0;
+
+                    if (locCvr > cp.cvr && locAcos < cp.acos) {
+                        addAdvice(cp, 'bid', `📍 BID 建议 [${loc}]`, `该位置表现优于活动整体水平。建议提高出价比例 (如 +10%)。`, '应用 +BID');
+                    } else if (locCvr < cp.cvr || locAcos > cp.acos) {
+                        addAdvice(cp, 'bid', `📍 BID 建议 [${loc}]`, `该位置效率低下或成本过高。建议降低或移除出价比例。`, '降低 BID');
+                    }
+                });
+            });
+        });
+    }
+
+    function addAdvice(cp, type, title, desc, actionTxt) {
+        const ad = { type, title, desc, actionTxt };
+        cp.suggestions.push(ad);
+        state.exportList.push({
+            Portfolio: cp.portfolio,
+            Campaign: cp.name,
+            Type: title,
+            Detail: desc,
+            Action: actionTxt
+        });
+    }
+
+    function mockTrafficQualityCheck(str) {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+        return (Math.abs(hash) % 10) < 5;
+    }
+
+    /* ================== 渲染与交互 ================== */
+    function renderDashboard() {
+        document.getElementById('gm-spend').innerText = `$${state.globalMetrics.spend.toFixed(2)}`;
+        document.getElementById('gm-sales').innerText = `$${state.globalMetrics.sales.toFixed(2)}`;
+        document.getElementById('gm-acos').innerText = `${(state.globalMetrics.acos * 100).toFixed(2)}%`;
+        document.getElementById('gm-cvr').innerText = `${(state.globalMetrics.cvr * 100).toFixed(2)}%`;
+
+        const filterText = document.getElementById('searchInput').value.toLowerCase();
+        const container = document.getElementById('portfolioList');
+        container.innerHTML = '';
+
+        let canvasQueue = [];
+
+        Object.values(state.dataMap).forEach((pf, pIndex) => {
+            if (filterText && !pf.name.toLowerCase().includes(filterText)) return;
+
+            let pfHtml = `
+                <div class="portfolio-item ${filterText ? 'expanded' : 'expanded'}" id="pf-box-${pIndex}">
+                    <div class="pf-header" onclick="togglePf('pf-box-${pIndex}')">
+                        <div class="pf-title-area">
+                            <span class="pf-chevron">▶</span>
+                            <strong>📁 ${pf.name}</strong>
+                        </div>
+                        <div class="pf-stats">
+                            <span>花费: <b>$${pf.spend.toFixed(2)}</b></span>
+                            <span>ACOS: <b>${(pf.acos*100).toFixed(1)}%</b></span>
+                            <span>CVR: <b>${(pf.cvr*100).toFixed(1)}%</b></span>
+                        </div>
+                    </div>
+                    <div class="campaign-list">
+            `;
+
+            Object.values(pf.campaigns).forEach((cp, cIndex) => {
+                const mClass = cp.matchType === '精准' ? 'badge-exact' : (cp.matchType === '词组' ? 'badge-phrase' : 'badge-broad');
+                const canvasId = `chart-${pIndex}-${cIndex}`;
+                
+                // 置灰被暂停/归档的活动
+                const inactiveClass = cp.isActive ? '' : 'cp-inactive';
+
+                pfHtml += `
+                    <div class="cp-card ${inactiveClass}">
+                        <div class="cp-header">
+                            <div>
+                                <span class="badge ${mClass}">${cp.matchType}</span>
+                                ${!cp.isActive ? '<span class="badge badge-inactive" style="margin-right:8px;">已暂停/归档</span>' : ''}
+                                <b>${cp.name}</b>
+                            </div>
+                            <div class="cp-metrics">
+                                <span>花费: $${cp.spend.toFixed(2)}</span>
+                                <span>ACOS: ${(cp.acos*100).toFixed(1)}%</span>
+                                <span>CVR: ${(cp.cvr*100).toFixed(1)}%</span>
+                            </div>
+                        </div>
+                `;
+
+                // 广告位分析与图表区域 (活动必须激活才显示图表)
+                if(cp.isActive && Object.keys(cp.plAgg || {}).length > 0) {
+                    pfHtml += `
+                        <div class="pl-analysis">
+                            <table class="pl-table">
+                                <tr><th>广告位</th><th>点击</th><th>订单</th><th>CVR</th><th>ACOS</th></tr>
+                                ${Object.keys(cp.plAgg).map(loc => {
+                                    const d = cp.plAgg[loc];
+                                    const cvr = d.clicks > 0 ? (d.orders/d.clicks*100).toFixed(1) : 0;
+                                    const acos = d.sales > 0 ? (d.spend/d.sales*100).toFixed(1) : 0;
+                                    return `<tr><td>${loc}</td><td>${d.clicks}</td><td>${d.orders}</td><td>${cvr}%</td><td>${acos}%</td></tr>`;
+                                }).join('')}
+                            </table>
+                            <div style="font-size:0.75rem; color:var(--text-muted); font-weight:bold;">📉 近 7 天各位置 CVR 趋势</div>
+                            <div class="chart-container">
+                                <canvas id="${canvasId}"></canvas>
+                            </div>
+                        </div>
+                    `;
+                    canvasQueue.push({ id: canvasId, data: cp.plAgg });
+                }
+
+                // 优化建议区域
+                if (!cp.isActive) {
+                    pfHtml += `<div style="padding:16px; font-size:0.85rem; color:var(--danger); text-align:center;">🚫 广告活动已关闭，不再提供并应用优化建议。</div>`;
+                } else if (cp.suggestions.length > 0) {
+                    pfHtml += `<div class="advice-section">`;
+                    const negs = cp.suggestions.filter(s => s.type === 'neg');
+                    const others = cp.suggestions.filter(s => s.type !== 'neg');
+                    
+                    if (negs.length > 0) {
+                        pfHtml += `
+                            <div class="advice-item type-neg">
+                                <div class="advice-content">
+                                    <div class="advice-title">🚫 否定词建议汇总 (${negs.length}个)</div>
+                                    <div class="advice-desc">${negs.map(n => n.desc).join(' | ')}</div>
+                                </div>
+                                <button class="btn btn-outline btn-sm advice-action" onclick="mockAction('添加所有否定词')">批量添加否定</button>
+                            </div>
+                        `;
+                    }
+
+                    others.forEach(s => {
+                        pfHtml += `
+                            <div class="advice-item type-${s.type}">
+                                <div class="advice-content">
+                                    <div class="advice-title">${s.title}</div>
+                                    <div class="advice-desc">${s.desc}</div>
+                                </div>
+                                <button class="btn btn-outline btn-sm advice-action" onclick="mockAction('${s.actionTxt}')">${s.actionTxt}</button>
+                            </div>
+                        `;
+                    });
+                    pfHtml += `</div>`;
+                } else {
+                    pfHtml += `<div style="padding:16px; font-size:0.85rem; color:var(--text-muted); text-align:center;">✅ 该活动当前表现平稳，暂无操作建议。</div>`;
+                }
+
+                pfHtml += `</div>`; // end cp-card
+            });
+
+            pfHtml += `</div></div>`; // end portfolio
+            container.insertAdjacentHTML('beforeend', pfHtml);
+        });
+
+        // 绘制 Canvas
+        setTimeout(() => {
+            canvasQueue.forEach(q => drawTrendChart(q.id, q.data));
+        }, 100);
+    }
+
+    function togglePf(id) {
+        document.getElementById(id).classList.toggle('expanded');
+    }
+
+    function mockAction(actionName) {
+        alert(`[前端模拟] 操作成功: ${actionName}`);
+    }
+
+    function exportJSON() {
+        if(state.exportList.length === 0) return alert("暂无优化建议可导出！");
+        const blob = new Blob([JSON.stringify(state.exportList, null, 2)], {type: "application/json"});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `PPC_Optimization_List_${new Date().getTime()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    /* ================== Canvas 图表 ================== */
+    function drawTrendChart(canvasId, plAgg) {
+        const canvas = document.getElementById(canvasId);
+        if(!canvas) return;
+        const ctx = canvas.getContext('2d');
+        
+        const rect = canvas.parentElement.getBoundingClientRect();
+        canvas.width = rect.width * 2;
+        canvas.height = rect.height * 2;
+        ctx.scale(2, 2);
+        const width = rect.width;
+        const height = rect.height;
+
+        let allDates = new Set();
+        Object.values(plAgg).forEach(locData => Object.keys(locData.dates).forEach(d => allDates.add(d)));
+        let sortedDates = Array.from(allDates).sort();
+        if (sortedDates.length > 7) sortedDates = sortedDates.slice(-7);
+
+        if (sortedDates.length < 2) {
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '12px sans-serif';
+            ctx.fillText('趋势数据不足（需至少2天数据）', 20, height / 2);
+            return;
+        }
+
+        const padding = 20;
+        const drawW = width - padding * 2;
+        const drawH = height - padding * 2;
+        const colors = ['#4f46e5', '#10b981', '#f59e0b', '#ec4899'];
+        
+        let maxCvr = 0.01; 
+        const lineData = [];
+
+        Object.keys(plAgg).forEach((loc, idx) => {
+            const pts = [];
+            sortedDates.forEach(date => {
+                const dStat = plAgg[loc].dates[date];
+                const cvr = dStat && dStat.clicks > 0 ? dStat.orders / dStat.clicks : 0;
+                if(cvr > maxCvr) maxCvr = cvr;
+                pts.push(cvr);
+            });
+            lineData.push({ label: loc, points: pts, color: colors[idx % colors.length] });
+        });
+
+        ctx.clearRect(0, 0, width, height);
+        ctx.strokeStyle = '#e2e8f0';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(padding, padding);
+        ctx.lineTo(padding, height - padding);
+        ctx.lineTo(width - padding, height - padding);
+        ctx.stroke();
+
+        const xStep = drawW / (sortedDates.length - 1);
+        
+        lineData.forEach(line => {
+            ctx.beginPath();
+            ctx.strokeStyle = line.color;
+            ctx.lineWidth = 2;
+            line.points.forEach((val, i) => {
+                const x = padding + i * xStep;
+                const y = height - padding - (val / maxCvr) * drawH;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+            
+            line.points.forEach((val, i) => {
+                const x = padding + i * xStep;
+                const y = height - padding - (val / maxCvr) * drawH;
+                ctx.beginPath();
+                ctx.fillStyle = line.color;
+                ctx.arc(x, y, 3, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        });
+
+        ctx.font = '10px sans-serif';
+        lineData.forEach((line, i) => {
+            ctx.fillStyle = line.color;
+            ctx.fillText('■ ' + line.label.substring(0,6), padding + i * 80, 15);
+        });
+    }
+
+    /* ================== 示例数据 ================== */
+    function loadSampleData() {
+        state.rawST = [
+            {'Portfolio Name': 'Portfolio_TeaLight', 'Campaign Name': 'CP_Tea_Broad', 'Match Type': 'Broad', 'Campaign Status': 'Enabled', 'Customer Search Term': 'cheap candles', 'Spend': '$15.00', 'Sales': '$0.00', 'Clicks': '10', 'Orders': 0},
+            {'Portfolio Name': 'Portfolio_TeaLight', 'Campaign Name': 'CP_Tea_Broad', 'Match Type': 'Broad', 'Campaign Status': 'Enabled', 'Customer Search Term': 'tealight bulk', 'Spend': 10, 'Sales': 100, 'Clicks': 15, 'Orders': 8},
+            {'Portfolio Name': 'Portfolio_Pillar', 'Campaign Name': 'CP_Pillar_Phrase_Paused', 'Match Type': 'Phrase', 'Campaign Status': 'Paused', 'Customer Search Term': 'red pillar', 'Spend': 30, 'Sales': 0, 'Clicks': 25, 'Orders': 0}, 
+            {'Portfolio Name': 'Portfolio_Other', 'Campaign Name': 'CP_Other_Exact', 'Match Type': 'Exact', 'Campaign Status': 'Enabled', 'Customer Search Term': 'gift set', 'Spend': '50.50', 'Sales': 40, 'Clicks': 15, 'Orders': 2} 
+        ];
+
+        const today = new Date();
+        const dates = Array.from({length: 7}, (_, i) => {
+            const d = new Date(today); d.setDate(d.getDate() - i);
+            return d.toISOString().split('T')[0];
+        }).reverse();
+
+        state.rawPL = [];
+        const placements = ['Top of Search', 'Rest of Search', 'Product Pages'];
+        ['CP_Tea_Broad', 'CP_Pillar_Phrase_Paused', 'CP_Other_Exact'].forEach((cp, idx) => {
+            placements.forEach(loc => {
+                dates.forEach(date => {
+                    const baseClick = Math.floor(Math.random() * 5) + 1;
+                    let cvrMultiplier = (loc === 'Top of Search' && idx !== 1) ? 0.3 : 0.05; 
+                    const orders = Math.floor(baseClick * cvrMultiplier * (Math.random() + 0.5));
+                    state.rawPL.push({
+                        'Campaign Name': cp, 'Placement': loc, 'Date': date,
+                        'Spend': baseClick * 1.5, 'Sales': orders * 15,
+                        'Clicks': baseClick, 'Orders': orders
+                    });
+                });
+            });
+        });
+
+        alert("✅ 示例数据已加载，包含带美元符的数据以及一个已被暂停的广告。即将开始诊断...");
+        processData();
+    }
+
+    window.onload = init;
+</script>
+</body>
+</html>
